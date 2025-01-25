@@ -5,8 +5,45 @@ import torch.nn as nn
 from torch import optim
 import numpy as np
 import random
-from tqdm import tqdm
 from sentiment_data import *
+
+
+class SentimentClassifier(object):
+    """
+    Sentiment classifier base type
+    """
+
+    def predict(self, ex_words: List[str], has_typos: bool) -> int:
+        """
+        Makes a prediction on the given sentence
+        :param ex_words: words to predict on
+        :param has_typos: True if we are evaluating on data that potentially has typos, False otherwise. If you do
+        spelling correction, this parameter allows you to only use your method for the appropriate dev eval in Q3
+        and not otherwise
+        :return: 0 or 1 with the label
+        """
+        raise Exception("Don't call me, call my subclasses")
+
+    def predict_all(self, all_ex_words: List[List[str]], has_typos: bool) -> List[int]:
+        """
+        You can leave this method with its default implementation, or you can override it to a batched version of
+        prediction if you'd like. Since testing only happens once, this is less critical to optimize than training
+        for the purposes of this assignment.
+        :param all_ex_words: A list of all exs to do prediction on
+        :param has_typos: True if we are evaluating on data that potentially has typos, False otherwise.
+        :return:
+        """
+        return [self.predict(ex_words, has_typos) for ex_words in all_ex_words]
+
+
+class TrivialSentimentClassifier(SentimentClassifier):
+    def predict(self, ex_words: List[str], has_typos: bool) -> int:
+        """
+        :param ex:
+        :return: 1, always predicts positive class
+        """
+        return 1
+
 
 class FFNN(nn.Module):
     def __init__(self, input_size, hidden_size, output_size,word_embeddings=None):
@@ -27,42 +64,12 @@ class FFNN(nn.Module):
         else:
             return self.fc2(self.relu(self.fc1(x)))
 
-class SentimentClassifier(object):
-    """
-    Sentiment classifier base type
-    """
-
-    def predict(self, ex_words: List[str]) -> int:
-        """
-        Makes a prediction on the given sentence
-        :param ex_words: words to predict on
-        :return: 0 or 1 with the label
-        """
-        raise Exception("Don't call me, call my subclasses")
-
-    def predict_all(self, all_ex_words: List[List[str]]) -> List[int]:
-        """
-        You can leave this method with its default implementation, or you can override it to a batched version of
-        prediction if you'd like. Since testing only happens once, this is less critical to optimize than training
-        for the purposes of this assignment.
-        :param all_ex_words: A list of all exs to do prediction on
-        :return:
-        """
-        return [self.predict(ex_words) for ex_words in all_ex_words]
-
-
-class TrivialSentimentClassifier(SentimentClassifier):
-    def predict(self, ex_words: List[str]) -> int:
-        """
-        :param ex:
-        :return: 1, always predicts positive class
-        """
-        return 1
-
 class NeuralSentimentClassifier(SentimentClassifier):
     """
     Implement your NeuralSentimentClassifier here. This should wrap an instance of the network with learned weights
-    along with everything needed to run it on new data (word embeddings, etc.)
+    along with everything needed to run it on new data (word embeddings, etc.). You will need to implement the predict
+    method and you can optionally override predict_all if you want to use batching at inference time (not necessary,
+    but may make things faster!)
     """
     def __init__(self, model: nn.Module, word_embeddings: WordEmbeddings):
         SentimentClassifier.__init__(self)
@@ -70,7 +77,7 @@ class NeuralSentimentClassifier(SentimentClassifier):
         self.model = model
         self.word_embeddings = word_embeddings
 
-    def predict(self, ex_words: List[str]):
+    def predict(self, ex_words: List[str], has_typos: bool):
         # Convert words to word embeddings
         words_idx = [max(1, self.word_indexer.index_of(word)) for word in ex_words]
 
@@ -110,13 +117,18 @@ def get_indices(train_exs: List[SentimentExample], word_embeddings: WordEmbeddin
 
     return torch.LongTensor(idxs), torch.LongTensor(labels)
 
-def train_deep_averaging_network(args, train_exs: List[SentimentExample], dev_exs: List[SentimentExample], word_embeddings: WordEmbeddings) -> NeuralSentimentClassifier:
+
+def train_deep_averaging_network(args, train_exs: List[SentimentExample], dev_exs: List[SentimentExample],
+                                 word_embeddings: WordEmbeddings, train_model_for_typo_setting: bool) -> NeuralSentimentClassifier:
     """
     :param args: Command-line args so you can access them here
     :param train_exs: training examples
     :param dev_exs: development set, in case you wish to evaluate your model during training
     :param word_embeddings: set of loaded word embeddings
-    :return: A trained NeuralSentimentClassifier model
+    :param train_model_for_typo_setting: True if we should train the model for the typo setting, False otherwise
+    :return: A trained NeuralSentimentClassifier model. Note: you can create an additional subclass of SentimentClassifier
+    and return an instance of that for the typo setting if you want; you're allowed to return two different model types
+    for the two settings.
     """
     batch_size = 64
 
@@ -152,51 +164,6 @@ def train_deep_averaging_network(args, train_exs: List[SentimentExample], dev_ex
             optimizer.step()
         total_loss /= len(train_exs)
         print("Total loss on epoch %i: %f" % (epoch, total_loss))
-    """  
-    word_indexer = word_embeddings.word_indexer
-    word_indices = {}
-    for i in range(len(train_exs)):
-        words = train_exs[i].words
-        index_list = []
-        for word in words:
-            idx = word_indexer.index_of(word)
-            index_list.append(max(idx, 1))
-        word_indices[i] = index_list
-
-    for epoch in tqdm(range(epochs)):
-        random.shuffle(ex_indices)
-        total_loss = 0.0
-        batch_x = []
-        batch_y = []
-        pad_length=50
-        for idx in ex_indices:
-            if len(batch_x)<batch_size:
-                sent_pad = [0]*pad_length
-                sent = word_indices[idx]
-                # padding
-                sent_pad[:min(pad_length,len(sent))]=sent[:min(pad_length,len(sent))]
-                batch_x.append(sent_pad)
-                y = train_exs[idx].label
-                batch_y.append(y)
-
-            else:   # len(batch_x) = batch_size
-                model.train()
-                optimizer.zero_grad()
-                batch_x = torch.tensor(batch_x)
-                probs =  model.forward(batch_x)
-                target = torch.tensor(batch_y)
-                loss =  criterion(probs, target)
-                total_loss += loss
-                
-                loss.backward()
-                
-                optimizer.step()
-                batch_x = []
-                batch_y = []
-
-        total_loss /= len(train_exs)
-        print("Total loss on epoch %i: %f" % (epoch, total_loss))
-     """
+    
     return NeuralSentimentClassifier(model,word_embeddings)
-  
 
