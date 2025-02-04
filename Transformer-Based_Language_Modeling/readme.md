@@ -172,9 +172,6 @@ The model learns how to determine these counts and outputs the corresponding cla
 
 ---
 
-This is the main content and structure of the program. If you need further explanations on specific parts or want to see the results, feel free to let me know!
----
-
 ## Installation
 
 ### Prerequisites
