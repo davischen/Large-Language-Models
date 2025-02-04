@@ -78,11 +78,11 @@ This program primarily uses the PyTorch framework to implement a simplified **Tr
 
    Here, `input_vecs` is passed as **Query (Q)**, **Key (K)**, and **Value (V)** to `nn.MultiheadAttention`. PyTorch automatically computes:
 
-   \( Q = XW^Q \)  
-   \( K = XW^K \)  
-   \( V = XW^V \)
+   $Q = XW^Q$  
+   $K = XW^K$  
+   $V = XW^V$
 
-   where \( W^Q \), \( W^K \), and \( W^V \) are weight matrices learned by the model. These internal computations are abstracted by the framework, simplifying the implementation.
+   where $W^Q$, $W^K$, and $W^V$ are weight matrices learned by the model. These internal computations are abstracted by the framework, simplifying the implementation.
 
 ---
 
@@ -224,6 +224,27 @@ This program utilizes PyTorch to implement different types of **language models*
      log_probs = F.log_softmax(self.to_classes(transform), dim=-1)
      ```
 
+   **Feedforward Neural Network (FFN) in Transformer:**
+   - Each Transformer encoder layer includes a **Feedforward Neural Network (FFN)** that processes each position independently, adding non-linearity and improving the model's expressive power.
+   ```python
+   self.feedforward = nn.Sequential(
+       nn.Linear(d_model, d_internal),
+       nn.ReLU(),
+       nn.Linear(d_internal, d_model)
+   )
+   ```
+   - **Relationship to Transformer Model:**
+     - The FFN operates after the self-attention mechanism in each Transformer layer.
+     - It applies two linear transformations with a ReLU activation in between, allowing the model to learn complex patterns beyond simple linear relationships.
+     - **Residual connections** and **layer normalization** are applied around both the self-attention and feedforward components to stabilize training and improve convergence.
+     ```python
+     x = input_vecs + attn_output  # Residual connection after self-attention
+     x = F.layer_norm(x, x.size()[1:])  # Layer normalization
+     ff_output = self.feedforward(x)  # Feedforward network
+     x = x + ff_output  # Residual connection after FFN
+     x = F.layer_norm(x, x.size()[1:])  # Final normalization
+     ```
+
 4. **`NeuralLanguageModel` (Subclass of `LanguageModel`)**:
    - Wraps a neural model (like `TransformerEndcoder`) to implement the language model interface.
    - **`get_next_char_log_probs(context)`**: Uses the neural model to get log probabilities for the next character.
@@ -278,7 +299,6 @@ This program utilizes PyTorch to implement different types of **language models*
 Assuming the training text is a sequence of characters "hello world", the model will learn to predict the next character given a context. For example:
 - **Context**: "hell"
 - **Expected Output**: The model should predict "o" with high probability.
-
 
 ---
 
