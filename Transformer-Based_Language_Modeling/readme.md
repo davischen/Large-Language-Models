@@ -35,7 +35,7 @@ This project implements a **Transformer-based Language Model** for character-lev
 
 ---
 
-### Program Overview: Transformer Model Implementation (`transformer.py`)
+## Program Overview: Transformer Model Implementation (`transformer.py`)
 
 This program primarily uses the PyTorch framework to implement a simplified **Transformer model** designed for a letter counting classification task. The model determines how many times each letter in an input string has previously appeared before its current occurrence and classifies it as 0 (never appeared), 1 (appeared once), or 2 (appeared two or more times).
 
@@ -163,12 +163,122 @@ Assuming the input string is `"hello"`, the model will output for each letter:
 The model learns how to determine these counts and outputs the corresponding classification results.
 
 ---
+## Program Overview: Language Model Implementation (`transformer_m.py`)
 
-### Potential Application Scenarios
+This program utilizes PyTorch to implement different types of **language models** with a focus on character-level modeling. It includes a uniform probability model and a Transformer-based neural language model to predict the next character in a sequence based on the context.
 
-- **Letter or Word Counting**: The model architecture can be extended to more complex sequence labeling tasks, such as Named Entity Recognition (NER).
-- **Natural Language Processing (NLP)**: This model can serve as a foundation for learning Transformer architecture, further applied to translation, text generation, etc.
-- **Sequence Analysis**: Any task that requires capturing sequence dependencies, such as DNA sequence analysis or time-series forecasting.
+---
+
+### Modules and Function Descriptions
+
+1. **Imported Modules**:
+   - `torch`, `torch.nn`, `torch.optim`: Used for building, training, and optimizing neural network models.
+   - `numpy`, `random`, `collections`, `time`: Used for data manipulation, randomization, and performance measurement.
+   - `torch.utils.data`: Provides utilities like `DataLoader` for handling datasets.
+   - `transformer.PositionalEncoding`: Custom positional encoding class imported from the Transformer implementation.
+
+---
+
+### Core Model Structure and Transformer Model Relationship
+
+1. **`LanguageModel` (Base Class)**:
+   - Defines the interface for all language models, including methods to get log probabilities of the next character (`get_next_char_log_probs`) and the log probability of a sequence (`get_log_prob_sequence`).
+
+2. **`UniformLanguageModel` (Subclass of `LanguageModel`)**:
+   - Implements a simple uniform probability model where each character has an equal chance of appearing.
+   - **`get_next_char_log_probs(context)`**: Returns uniform log probabilities over the vocabulary.
+   - **`get_log_prob_sequence(next_chars, context)`**: Returns the log probability of a sequence assuming uniform distribution.
+
+3. **`TransformerEndcoder` (Neural Network Model)**:
+   - Implements a Transformer encoder architecture for language modeling.
+
+   **Program and Transformer Model Correspondence:**
+
+   - **Embedding Layer:** Converts characters into vector representations, aligning with the input embeddings of the Transformer model.
+     ```python
+     self.embeddings = nn.Embedding(num_embeddings=vocab_size, embedding_dim=num_positions)
+     ```
+
+   - **Positional Encoding:** Adds sequence position information to embeddings, allowing the model to recognize the order of characters.
+     ```python
+     self.PositionalEncoding = PositionalEncoding(d_model, num_positions=num_positions)
+     ```
+
+   - **Self-Attention Mechanism:** Implemented using PyTorch's `nn.TransformerEncoderLayer`, which includes multi-head self-attention and feedforward networks.
+     ```python
+     encoder_layer = nn.TransformerEncoderLayer(d_model, num_hidden)
+     self.transformer_encoder = nn.TransformerEncoder(encoder_layer, num_layers)
+     ```
+     - **`d_model`:** Dimension of the model input and output.
+     - **`num_hidden`:** Number of hidden units in the feedforward layer.
+     - **`num_layers`:** Number of Transformer encoder layers stacked to improve model performance.
+
+   - **Masked Attention:** A triangular mask is used to ensure that predictions for a character only consider previous characters in the sequence, mimicking the autoregressive property of language models.
+     ```python
+     mask = torch.triu(torch.ones(len(indices), len(indices)) * float('-inf'), diagonal=1)
+     ```
+
+   - **Output Layer:** Converts the final encoded vectors to class probabilities corresponding to each character in the vocabulary.
+     ```python
+     self.to_classes = nn.Linear(d_model, num_classes)
+     log_probs = F.log_softmax(self.to_classes(transform), dim=-1)
+     ```
+
+4. **`NeuralLanguageModel` (Subclass of `LanguageModel`)**:
+   - Wraps a neural model (like `TransformerEndcoder`) to implement the language model interface.
+   - **`get_next_char_log_probs(context)`**: Uses the neural model to get log probabilities for the next character.
+   - **`get_log_prob_sequence(next_chars, context)`**: Calculates the total log probability of a sequence based on the given context.
+
+   **Program and Transformer Model Correspondence:**
+   - The model processes sequences autoregressively, predicting each next character based on the previous context, which is characteristic of Transformer-based language models.
+   ```python
+   def get_next_char_log_probs(self, context):
+       log_probs = self.model.forward(context)
+       return log_probs[-1].detach().numpy()
+   ```
+
+---
+
+### Training Workflow
+
+1. **`train_lm` Function**:
+   - Trains a `TransformerEndcoder` model on character sequences.
+
+   **Program and Transformer Model Correspondence:**
+   - The training loop feeds sequences into the Transformer, optimizing it to predict the next character in a sequence, a standard language modeling task.
+   ```python
+   optimizer = optim.Adam(model.parameters(), lr=1e-3)
+   criterion = nn.NLLLoss()
+
+   for epoch in range(num_epochs):
+       total_loss = 0.0
+       for batch_num in range(chunks):
+           input_sequence = train_text[batch_num * chunk_size : (batch_num + 1) * chunk_size]
+           context = ' ' + input_sequence[:-1]
+           target = torch.LongTensor([vocab_index.index_of(c) for c in input_sequence])
+
+           optimizer.zero_grad()
+           log_probs = model(context)
+           loss = criterion(log_probs, target)
+           loss.backward()
+           optimizer.step()
+           total_loss += loss.item()
+   ```
+
+2. **`train_lm2` Function**:
+   - An alternative training function that introduces data batching using `DataLoader`, which helps improve training efficiency.
+
+3. **`create_batches` Function**:
+   - Helper function to split data into evenly sized batches and convert text data into tensors suitable for model training.
+
+---
+
+### Example Explanation
+
+Assuming the training text is a sequence of characters "hello world", the model will learn to predict the next character given a context. For example:
+- **Context**: "hell"
+- **Expected Output**: The model should predict "o" with high probability.
+
 
 ---
 
